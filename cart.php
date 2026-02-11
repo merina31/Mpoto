@@ -1,132 +1,20 @@
 <?php
 session_start();
-header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST');
-header('Access-Control-Allow-Headers: Content-Type');
-
-require_once '../includes/config.php';
-require_once '../includes/db_connect.php';
-require_once '../includes/auth_functions.php';
+require_once 'includes/config.php';
+require_once 'includes/db_connect.php';
+require_once 'includes/auth_functions.php';
 
 // Require login for cart access
 $auth->requireLogin();
 
-$db = Database::getInstance();
-$user_id = $_SESSION['user_id'];
-
-// Handle AJAX requests
-if ($_SERVER['REQUEST_METHOD'] === 'POST' || $_SERVER['REQUEST_METHOD'] === 'GET') {
-    $input = json_decode(file_get_contents('php://input'), true) ?? $_POST ?? $_GET;
-    $action = $input['action'] ?? '';
-    $meal_id = intval($input['meal_id'] ?? 0);
-    $quantity = intval($input['quantity'] ?? 1);
-    
-    switch ($action) {
-        case 'add':
-            if ($meal_id > 0 && $quantity > 0) {
-                // Check if meal exists and is available
-                $checkSql = "SELECT id, price FROM meals WHERE id = ? AND is_available = 1";
-                $checkStmt = $db->prepare($checkSql);
-                $checkStmt->bind_param("i", $meal_id);
-                $checkStmt->execute();
-                $mealResult = $checkStmt->get_result();
-                
-                if ($mealResult->num_rows === 0) {
-                    echo json_encode(['success' => false, 'message' => 'Meal not found or unavailable']);
-                    exit;
-                }
-                
-                // Check if item already in cart
-                $existSql = "SELECT id, quantity FROM cart WHERE user_id = ? AND meal_id = ?";
-                $existStmt = $db->prepare($existSql);
-                $existStmt->bind_param("ii", $user_id, $meal_id);
-                $existStmt->execute();
-                $existResult = $existStmt->get_result();
-                
-                if ($existResult->num_rows > 0) {
-                    // Update existing cart item
-                    $existRow = $existResult->fetch_assoc();
-                    $newQuantity = $existRow['quantity'] + $quantity;
-                    $updateSql = "UPDATE cart SET quantity = ? WHERE user_id = ? AND meal_id = ?";
-                    $updateStmt = $db->prepare($updateSql);
-                    $updateStmt->bind_param("iii", $newQuantity, $user_id, $meal_id);
-                    $updateStmt->execute();
-                } else {
-                    // Add new cart item
-                    $addSql = "INSERT INTO cart (user_id, meal_id, quantity) VALUES (?, ?, ?)";
-                    $addStmt = $db->prepare($addSql);
-                    $addStmt->bind_param("iii", $user_id, $meal_id, $quantity);
-                    $addStmt->execute();
-                }
-                
-                // Get updated cart count
-                $countSql = "SELECT SUM(quantity) as total FROM cart WHERE user_id = ?";
-                $countStmt = $db->prepare($countSql);
-                $countStmt->bind_param("i", $user_id);
-                $countStmt->execute();
-                $countResult = $countStmt->get_result();
-                $countRow = $countResult->fetch_assoc();
-                $cartCount = $countRow['total'] ?? 0;
-                
-                echo json_encode([
-                    'success' => true, 
-                    'message' => 'Item added to cart',
-                    'cart_count' => $cartCount,
-                    'quantity' => $quantity
-                ]);
-            } else {
-                echo json_encode(['success' => false, 'message' => 'Invalid meal or quantity']);
-            }
-            exit;
-            
-        case 'get_count':
-            $countSql = "SELECT SUM(quantity) as total FROM cart WHERE user_id = ?";
-            $countStmt = $db->prepare($countSql);
-            $countStmt->bind_param("i", $user_id);
-            $countStmt->execute();
-            $countResult = $countStmt->get_result();
-            $countRow = $countResult->fetch_assoc();
-            $cartCount = $countRow['total'] ?? 0;
-            
-            echo json_encode(['success' => true, 'cart_count' => $cartCount]);
-            exit;
-            
-        case 'update':
-            if ($quantity > 0) {
-                $sql = "UPDATE cart SET quantity = ? WHERE user_id = ? AND meal_id = ?";
-                $stmt = $db->prepare($sql);
-                $stmt->bind_param("iii", $quantity, $user_id, $meal_id);
-                $stmt->execute();
-                echo json_encode(['success' => true, 'message' => 'Cart updated']);
-            } else {
-                echo json_encode(['success' => false, 'message' => 'Invalid quantity']);
-            }
-            exit;
-            
-        case 'remove':
-            $sql = "DELETE FROM cart WHERE user_id = ? AND meal_id = ?";
-            $stmt = $db->prepare($sql);
-            $stmt->bind_param("ii", $user_id, $meal_id);
-            $stmt->execute();
-            echo json_encode(['success' => true, 'message' => 'Item removed from cart']);
-            exit;
-            
-        case 'clear':
-            $sql = "DELETE FROM cart WHERE user_id = ?";
-            $stmt = $db->prepare($sql);
-            $stmt->bind_param("i", $user_id);
-            $stmt->execute();
-            echo json_encode(['success' => true, 'message' => 'Cart cleared']);
-            exit;
-    }
-}
-
-// Load cart items from database (for display)
 $cart = [];
 $cartTotal = 0;
 $deliveryFee = 5.00; // Fixed delivery fee
 $taxRate = 0.08; // 8% tax
+
+// Load cart items from database
+$db = Database::getInstance();
+$user_id = $_SESSION['user_id'];
 
 $sql = "SELECT c.*, m.name, m.price, m.discount_price, m.image_url 
         FROM cart c 
@@ -143,6 +31,50 @@ while ($row = $result->fetch_assoc()) {
     $cart[] = $row;
     $cartTotal += $row['subtotal'];
 }
+
+// Handle cart actions
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+    $meal_id = $_POST['meal_id'] ?? 0;
+    $quantity = $_POST['quantity'] ?? 1;
+    
+    switch ($action) {
+        case 'update':
+            if ($quantity > 0) {
+                $sql = "UPDATE cart SET quantity = ? WHERE user_id = ? AND meal_id = ?";
+                $stmt = $db->prepare($sql);
+                $stmt->bind_param("iii", $quantity, $user_id, $meal_id);
+                $stmt->execute();
+            }
+            break;
+            
+        case 'remove':
+            $sql = "DELETE FROM cart WHERE user_id = ? AND meal_id = ?";
+            $stmt = $db->prepare($sql);
+            $stmt->bind_param("ii", $user_id, $meal_id);
+            $stmt->execute();
+            break;
+            
+        case 'clear':
+            $sql = "DELETE FROM cart WHERE user_id = ?";
+            $stmt = $db->prepare($sql);
+            $stmt->bind_param("i", $user_id);
+            $stmt->execute();
+            break;
+            
+        case 'checkout':
+            header('Location: checkout.php');
+            exit();
+    }
+    
+    // Reload page to show updated cart
+    header('Location: cart.php');
+    exit();
+}
+
+// Calculate totals
+$taxAmount = $cartTotal * $taxRate;
+$grandTotal = $cartTotal + $deliveryFee + $taxAmount;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -150,12 +82,12 @@ while ($row = $result->fetch_assoc()) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Shopping Cart - <?php echo SITE_NAME; ?></title>
-    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
     <!-- Navigation -->
-    <?php include '../includes/navbar.php'; ?>
+    <?php include 'includes/navbar.php'; ?>
 
     <!-- Cart Page -->
     <div class="cart-container container">
@@ -266,8 +198,7 @@ while ($row = $result->fetch_assoc()) {
                         </div>
                     </div>
                     
-                    <form method="POST">
-                        <input type="hidden" name="action" value="checkout.php">
+                    <form method="POST" action="checkout.php">
                         <button type="submit" class="btn btn-primary btn-block btn-checkout">
                             <i class="fas fa-shopping-bag"></i> Proceed to Checkout
                         </button>
@@ -303,7 +234,7 @@ while ($row = $result->fetch_assoc()) {
     </div>
 
     <!-- Footer -->
-    <?php include '../includes/footer.php'; ?>
+    <?php include 'includes/footer.php'; ?>
 
     <!-- WhatsApp Float -->
     <a href="https://wa.me/<?php echo WHATSAPP_NUMBER; ?>" class="whatsapp-float" target="_blank">
