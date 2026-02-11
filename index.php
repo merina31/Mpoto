@@ -1,206 +1,206 @@
 <?php
 session_start();
-require_once '../includes/config.php';
-require_once '../includes/db_connect.php';
-require_once '../includes/auth_functions.php';
+require_once 'includes/config.php';
+require_once 'includes/db_connect.php';
+require_once 'includes/auth_functions.php';
 
-// Require admin authentication
-$auth->requireAdmin();
+// Redirect admins to admin dashboard
+if (isset($_SESSION['user_id']) && isset($_SESSION['role']) && $_SESSION['role'] === 'admin') {
+    header('Location: admin/index.php');
+    exit();
+}
 
-// Get statistics
-$db = Database::getInstance();
+if (isset($_SESSION['user_id']) && empty($_SESSION['profile_image'])) {
+    $userSql = "SELECT username, profile_image FROM users WHERE id = ? LIMIT 1";
+    $userStmt = $db->prepare($userSql);
+    $userStmt->bind_param("i", $_SESSION['user_id']);
+    $userStmt->execute();
+    $sessionUser = $userStmt->get_result()->fetch_assoc();
 
-// User count
-$stmt = $db->prepare("SELECT COUNT(*) as count FROM users WHERE role = 'user'");
-$stmt->execute();
-$user_count = $stmt->get_result()->fetch_assoc()['count'];
-
-// Order count
-$stmt = $db->prepare("SELECT COUNT(*) as count FROM orders");
-$stmt->execute();
-$order_count = $stmt->get_result()->fetch_assoc()['count'];
-
-// Today's orders
-$stmt = $db->prepare("SELECT COUNT(*) as count FROM orders WHERE DATE(created_at) = CURDATE()");
-$stmt->execute();
-$today_orders = $stmt->get_result()->fetch_assoc()['count'];
-
-// Revenue
-$stmt = $db->prepare("SELECT SUM(final_amount) as revenue FROM orders WHERE status = 'delivered'");
-$stmt->execute();
-$revenue = $stmt->get_result()->fetch_assoc()['revenue'] ?? 0;
-
-// Recent orders
-$stmt = $db->prepare("SELECT o.*, u.username, u.full_name 
-                     FROM orders o 
-                     LEFT JOIN users u ON o.user_id = u.id 
-                     ORDER BY o.created_at DESC 
-                     LIMIT 10");
-$stmt->execute();
-$recent_orders = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    if ($sessionUser) {
+        $_SESSION['username'] = $sessionUser['username'] ?? ($_SESSION['username'] ?? '');
+        $_SESSION['profile_image'] = $sessionUser['profile_image'] ?? '';
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - <?php echo SITE_NAME; ?></title>
-    <link rel="stylesheet" href="../assets/css/style.css">
-    <link rel="stylesheet" href="../assets/css/admin_style.css">
+    <title><?php echo SITE_NAME; ?> - Delicious Food Delivery</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/responsive.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
 </head>
 <body>
-    <?php include '../admin/includes/admin_navbar.php'; ?>
-    <div class="admin-container">
-        <!-- Sidebar -->
-        <aside class="admin-sidebar">
-            <div class="sidebar-header">
-                <h2><i class="fas fa-cog"></i> Admin Panel</h2>
+    <!-- Floating WhatsApp Button -->
+    <a href="https://wa.me/<?php echo WHATSAPP_NUMBER; ?>" class="whatsapp-float" target="_blank">
+        <i class="fab fa-whatsapp"></i>
+    </a>
+
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="container">
+            <a href="index.php" class="logo">
+                <i class="fas fa-utensils"></i>
+                <span><?php echo SITE_NAME; ?></span>
+            </a>
+            
+            <div class="nav-toggle" id="navToggle">
+                <span></span>
+                <span></span>
+                <span></span>
             </div>
-            <nav class="sidebar-nav">
-                <ul>
-                    <li class="active"><a href="index.php"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
-                    <li><a href="manage_users.php"><i class="fas fa-users"></i> Users</a></li>
-                    <li><a href="manage_meals.php"><i class="fas fa-utensils"></i> Meals</a></li>
-                    <li><a href="manage_categories.php"><i class="fas fa-list"></i> Categories</a></li>
-                    <li><a href="manage_orders.php"><i class="fas fa-shopping-cart"></i> Orders</a></li>
-                    <li><a href="manage_reviews.php"><i class="fas fa-star"></i> Reviews</a></li>
-                    <li><a href="notifications.php"><i class="fas fa-bell"></i> Notifications</a></li>
-                    <li><a href="upload_meal.php"><i class="fas fa-image"></i> Upload Meal Image</a></li>
-                    <li><a href="system_logs.php"><i class="fas fa-history"></i> System Logs</a></li>
-                    <li><a href="settings.php"><i class="fas fa-cogs"></i> Settings</a></li>
-                    <li><a href="../index.php"><i class="fas fa-home"></i> Back to Site</a></li>
-                    <li><a href="../logout.php"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
-                </ul>
-            </nav>
-        </aside>
+            
+            <ul class="nav-menu" id="navMenu">
+                <li><a href="index.php" class="active"><i class="fas fa-home"></i> Home</a></li>
+                <li><a href="menu.php"><i class="fas fa-burger"></i> Menu</a></li>
+                <li><a href="orders.php"><i class="fas fa-receipt"></i> My Orders</a></li>
+                <?php if(isset($_SESSION['user_id'])): ?>
+                    <li class="nav-cart">
+                        <a href="cart.php">
+                            <i class="fas fa-shopping-cart"></i>
+                            <span class="cart-count" id="cartCount">0</span>
+                        </a>
+                    </li>
+                    <li class="dropdown">
+                        <a href="#" class="dropdown-toggle">
+                            <i class="fas fa-user"></i>
+                            <?php echo htmlspecialchars($_SESSION['username']); ?>
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a href="profile.php"><i class="fas fa-user-circle"></i> Profile</a></li>
+                            <?php if(isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
+                                <li><a href="admin/index.php"><i class="fas fa-cog"></i> Admin Dashboard</a></li>
+                            <?php endif; ?>
+                            <li><hr></li>
+                            <li><a href="logout.php"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+                        </ul>
+                    </li>
+                <?php else: ?>
+                    <li><a href="login.php"><i class="fas fa-sign-in-alt"></i> Login</a></li>
+                    <li><a href="register.php"><i class="fas fa-user-plus"></i> Register</a></li>
+                <?php endif; ?>
+            </ul>
+        </div>
+    </nav>
 
-        <!-- Main Content -->
-        <main class="admin-main">
-            <header class="admin-header">
-                <h1>Dashboard Overview</h1>
-                <div class="user-info">
-                    <i class="fas fa-user-circle"></i>
-                    <span><?php echo $_SESSION['full_name']; ?> (Admin)</span>
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <h1>Delicious Food Delivered to Your Doorstep</h1>
+                <p>Order from our wide selection of meals prepared by expert chefs. Fast delivery guaranteed!</p>
+                <div class="hero-buttons">
+                    <a href="menu.php" class="btn btn-primary">Order Now</a>
+                    <a href="#features" class="btn btn-secondary">Learn More</a>
                 </div>
-            </header>
+            </div>
+            <div class="hero-image">
+                <img src="images/Flat-lay of Turkish family eating traditional Middle Eastern breakfast.jpg" alt="Delicious Food">
+            </div>
+        </div>
+    </section>
 
-            <!-- Stats Cards -->
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-icon" style="background-color: #4CAF50;">
-                        <i class="fas fa-users"></i>
-                    </div>
-                    <div class="stat-info">
-                        <h3><?php echo $user_count; ?></h3>
-                        <p>Total Users</p>
-                    </div>
+    <!-- Features Section -->
+    <section class="features" id="features">
+        <div class="container">
+            <h2 class="section-title">Why Choose Us</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <i class="fas fa-bolt"></i>
+                    <h3>Fast Delivery</h3>
+                    <p>Get your food delivered in under 30 minutes</p>
                 </div>
+                <div class="feature-card">
+                    <i class="fas fa-star"></i>
+                    <h3>Quality Food</h3>
+                    <p>Fresh ingredients prepared by expert chefs</p>
+                </div>
+                <div class="feature-card">
+                    <i class="fas fa-money-bill-wave"></i>
+                    <h3>Best Price</h3>
+                    <p>Competitive prices with regular discounts</p>
+                </div>
+                <div class="feature-card">
+                    <i class="fas fa-headset"></i>
+                    <h3>24/7 Support</h3>
+                    <p>Round-the-clock customer support</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Popular Meals Section -->
+    <section class="popular-meals">
+        <div class="container">
+            <h2 class="section-title">Popular Meals</h2>
+            <div class="meals-grid" id="popularMeals">
+                <!-- Meals will be loaded via JavaScript -->
+            </div>
+            <div class="text-center">
+                <a href="menu.php" class="btn btn-primary">View Full Menu</a>
+            </div>
+        </div>
+    </section>
+
+<?php include 'includes/footer.php'; ?>
+
+    <script src="assets/js/main.js"></script>
+    <script src="assets/js/cart.js"></script>
+    <script>
+        function formatCurrencyTZS(value) {
+            return `TSh ${Number(value || 0).toLocaleString('en-TZ', { maximumFractionDigits: 0 })}`;
+        }
+
+        // Check if user is logged in (for the cart system)
+        const isUserLoggedIn = <?php echo isset($_SESSION['user_id']) ? 'true' : 'false'; ?>;
+        
+        // Load popular meals
+        document.addEventListener('DOMContentLoaded', function() {
+            loadPopularMeals();
+            updateCartCount();
+        });
+
+        async function loadPopularMeals() {
+            try {
+                const response = await fetch('api/meals.php?action=get_popular');
+                const meals = await response.json();
                 
-                <div class="stat-card">
-                    <div class="stat-icon" style="background-color: #2196F3;">
-                        <i class="fas fa-shopping-cart"></i>
+                const container = document.getElementById('popularMeals');
+                container.innerHTML = meals.map(meal => `
+                    <div class="meal-card">
+                        <div class="meal-image">
+                            <img src="assets/images/Homemade Fresh Orange Juice Recipe.jpg" alt="${meal.name}">
+                            ${meal.discount_price ? `<span class="discount-badge">-${Math.round((1 - meal.discount_price/meal.price) * 100)}%</span>` : ''}
+                        </div>
+                        <div class="meal-info">
+                            <h3>${meal.name}</h3>
+                            <p>${meal.description.substring(0, 60)}...</p>
+                            <div class="meal-footer">
+                                <div class="price">
+                                    ${meal.discount_price ? 
+                                        `<span class="old-price">${formatCurrencyTZS(meal.price)}</span>
+                                         <span class="current-price">${formatCurrencyTZS(meal.discount_price)}</span>` :
+                                        `<span class="current-price">${formatCurrencyTZS(meal.price)}</span>`
+                                    }
+                                </div>
+                                <button class="btn-add-cart" data-action="add-to-cart" data-meal-id="${meal.id}" data-quantity="1">
+                                    <i class="fas fa-shopping-cart"></i>
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                    <div class="stat-info">
-                        <h3><?php echo $order_count; ?></h3>
-                        <p>Total Orders</p>
-                    </div>
-                </div>
+                `).join('');
                 
-                <div class="stat-card">
-                    <div class="stat-icon" style="background-color: #FF9800;">
-                        <i class="fas fa-calendar-day"></i>
-                    </div>
-                    <div class="stat-info">
-                        <h3><?php echo $today_orders; ?></h3>
-                        <p>Today's Orders</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon" style="background-color: #9C27B0;">
-                        <i class="fas fa-dollar-sign"></i>
-                    </div>
-                    <div class="stat-info">
-                        <h3>$<?php echo number_format($revenue, 2); ?></h3>
-                        <p>Total Revenue</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Recent Orders Table -->
-            <div class="card">
-                <div class="card-header">
-                    <h3>Recent Orders</h3>
-                    <a href="manage_orders.php" class="btn btn-primary">View All</a>
-                </div>
-                <div class="card-body">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Order #</th>
-                                <th>Customer</th>
-                                <th>Amount</th>
-                                <th>Status</th>
-                                <th>Date</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($recent_orders as $order): ?>
-                            <tr>
-                                <td><?php echo $order['order_number']; ?></td>
-                                <td><?php echo $order['full_name'] ?: $order['username']; ?></td>
-                                <td>$<?php echo number_format($order['final_amount'], 2); ?></td>
-                                <td>
-                                    <span class="status-badge status-<?php echo $order['status']; ?>">
-                                        <?php echo ucfirst($order['status']); ?>
-                                    </span>
-                                </td>
-                                <td><?php echo date('M d, Y', strtotime($order['created_at'])); ?></td>
-                                <td>
-                                    <a href="order_details.php?id=<?php echo $order['id']; ?>" class="btn-action">
-                                        <i class="fas fa-eye"></i>
-                                    </a>
-                                </td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Quick Actions -->
-            <div class="card">
-                <div class="card-header">
-                    <h3>Quick Actions</h3>
-                </div>
-                <div class="card-body">
-                    <div class="quick-actions">
-                        <a href="manage_meals.php?action=add" class="quick-action">
-                            <i class="fas fa-plus-circle"></i>
-                            <span>Add New Meal</span>
-                        </a>
-                        <a href="manage_categories.php?action=add" class="quick-action">
-                            <i class="fas fa-tags"></i>
-                            <span>Add Category</span>
-                        </a>
-                        <a href="manage_users.php?action=add" class="quick-action">
-                            <i class="fas fa-user-plus"></i>
-                            <span>Add User</span>
-                        </a>
-                        <a href="system_settings.php" class="quick-action">
-                            <i class="fas fa-cogs"></i>
-                            <span>System Settings</span>
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </main>
-    </div>
-
-    <?php include '../admin/includes/admin_footer.php'; ?>
-    <script src="../assets/js/main.js"></script>
-    <script src="../assets/js/admin.js"></script>
+                // Re-initialize cart buttons for dynamically loaded content
+                initializeCartButtons();
+            } catch (error) {
+                console.error('Error loading meals:', error);
+            }
+        }
+    </script>
 </body>
 </html>

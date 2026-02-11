@@ -1,8 +1,8 @@
 <?php
 session_start();
-require_once '../includes/config.php';
-require_once '../includes/db_connect.php';
-require_once '../includes/auth_functions.php';
+require_once 'includes/config.php';
+require_once 'includes/db_connect.php';
+require_once 'includes/auth_functions.php';
 
 // Get filter parameters
 $category_id = $_GET['category'] ?? 0;
@@ -100,12 +100,12 @@ $meals = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Our Menu - <?php echo SITE_NAME; ?></title>
-    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
     <!-- Navigation -->
-    <?php include '../includes/navbar.php'; ?>
+    <?php include 'includes/navbar.php'; ?>
 
     <!-- Menu Page -->
     <div class="menu-container container">
@@ -181,7 +181,7 @@ $meals = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                 <?php endif; ?>
                 
                 <?php if ($category_id > 0 || !empty($search)): ?>
-                    <a href="../api/menu.php" class="clear-filters">Clear All Filters</a>
+                    <a href="menu.php" class="clear-filters">Clear All Filters</a>
                 <?php endif; ?>
             </div>
         </div>
@@ -392,7 +392,7 @@ $meals = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     </div>
 
     <!-- Footer -->
-    <?php include '../includes/footer.php'; ?>
+    <?php include 'includes/footer.php'; ?>
 
     <!-- WhatsApp Float -->
     <a href="https://wa.me/<?php echo WHATSAPP_NUMBER; ?>" class="whatsapp-float" target="_blank">
@@ -597,7 +597,7 @@ $meals = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
                     // Redirect user to cart after a short confirmation delay
                     setTimeout(() => {
-                        window.location.href = '../cart.php';
+                        window.location.href = 'cart.php';
                     }, 700);
                 } else {
                     showNotification(data.message || 'Failed to add item to cart', 'error');
